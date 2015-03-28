@@ -267,7 +267,7 @@ func TestRandomRoundTrip(t *testing.T) {
 	fmt.Printf("Random seed: %d\n", seed)
 
 	for testCount := 0; testCount < 1000000; testCount++ {
-		valueCount := int(rand.Int31n(20)) + 1
+		valueCount := int(rand.Int31n(30)) + 1
 
 		values := []uint32{}
 		fields := []uint8{}
