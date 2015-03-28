@@ -3,7 +3,9 @@ package govarint
 import (
 	"bytes"
 	"fmt"
+	"math/rand"
 	"testing"
+	"time"
 )
 
 type (
@@ -69,7 +71,8 @@ var (
 
 		{[]uint8{4, 5}, []uint32{1, 12345}},
 
-		{[]uint8{3, 3, 6}, []uint32{1, 5, 1128411}},
+		// Action type, actor type, actor ID, object type, object ID.
+		{[]uint8{3, 3, 6, 3, 6}, []uint32{1, 5, 1128411, 2, 123456789}},
 
 		{[]uint8{3, 3}, []uint32{0, 5}},
 	}
@@ -136,6 +139,8 @@ var (
 		{[]uint8{4, 5}, []uint32{8, 12345}, []byte{0x47, 0x08, 0x1c, 0x80}},
 
 		{[]uint8{3, 3}, []uint32{0, 5}, []byte{0x0d}},
+
+		{[]uint8{6}, []uint32{0xb6369222}, []byte{0x81, 0xb1, 0xb4, 0x91, 0x10}},
 	}
 
 	decodeTests = []decodeTestCase{
@@ -146,6 +151,8 @@ var (
 		{[]uint8{4, 5}, []byte{0x47, 0x08, 0x1c, 0x80}, []uint32{8, 12345}},
 
 		{[]uint8{3, 3}, []byte{0x0d}, []uint32{0, 5}},
+
+		{[]uint8{6}, []byte{0x81, 0xb1, 0xb4, 0x91, 0x10}, []uint32{0xb6369222}},
 	}
 
 	addBitsTests = []addBitsTestCase{
@@ -163,6 +170,10 @@ var (
 		{[]byte{}, 1 << 31, 32, 0, 0, true, []byte{0, 0, 0}, 0, 7},
 
 		{[]byte{}, 0x0e, 5, 0x10, 4, false, []byte{0x17}, 0x00, 1},
+
+		{[]byte{}, 32, 6, 0x00, 0, false, []byte{}, 0x80, 6},
+
+		{[]byte{}, 0xb6369222, 32, 0x80, 6, true, []byte{0x81, 0xb1, 0xb4, 0x91}, 0x10, 5},
 	}
 
 	popBitsTests = []popBitsTestCase{
@@ -216,30 +227,62 @@ var (
 		{[]byte{}, 3, 0x0d, 3, false, 3, nil, []byte{}, 0x0d, 6},
 		{[]byte{}, 0, 0x0d, 6, true, 0, nil, []byte{}, 0x0d, 6},
 		{[]byte{}, 3, 0x0d, 6, true, 5, nil, []byte{}, 0x0d, 0},
+
+		{[]byte{0xb1, 0xb4, 0x91, 0x10}, 6, 0x81, 0, false, 32, nil, []byte{0xb1, 0xb4, 0x91, 0x10}, 0x81, 6},
+		{[]byte{0xb1, 0xb4, 0x91, 0x10}, 32, 0x81, 6, true, 0xb6369222, nil, []byte{}, 0x10, 5},
 	}
 )
 
 func TestRoundTrip(t *testing.T) {
 	for _, tc := range roundTripTests {
-		data, err := Encode(tc.fields, tc.values)
-		if err != nil {
-			t.Errorf("Unexpected encode error \"%s\" for %v", err, tc)
+		executeRoundTrip(t, tc)
+	}
+}
+
+func executeRoundTrip(t *testing.T, tc roundTripTestCase) {
+	data, err := Encode(tc.fields, tc.values)
+	if err != nil {
+		t.Errorf("Unexpected encode error \"%s\" for %v", err, tc)
+	}
+
+	result, err := Decode(tc.fields, data)
+	if err != nil {
+		t.Errorf("Unexpected decode error \"%s\" for %v", err, tc)
+	}
+
+	if len(tc.values) != len(result) {
+		t.Errorf("Value count not equal, expected %d, got %d for %v", len(tc.values), len(result), tc)
+	}
+
+	for i, expected := range tc.values {
+		if expected != result[i] {
+			t.Errorf("Incorrect value, expected 0x%08x, got 0x%08x for %v", expected, result[i], tc)
+		}
+	}
+}
+
+func TestRandomRoundTrip(t *testing.T) {
+	seed := time.Now().UnixNano()
+	rand.Seed(seed)
+	fmt.Printf("Random seed: %d\n", seed)
+
+	for testCount := 0; testCount < 1000000; testCount++ {
+		valueCount := int(rand.Int31n(20)) + 1
+
+		values := []uint32{}
+		fields := []uint8{}
+		for i := 0; i < valueCount; i++ {
+			curValue := uint32(rand.Int63() & 0xffffffff)
+			values = append(values, curValue)
+
+			valueLength := int32(32 - countLeadingZeros(curValue))
+			fieldWidth := rand.Int31n(int32(32-valueLength+1)) + valueLength
+			fields = append(fields, uint8(fieldWidth))
 		}
 
-		result, err := Decode(tc.fields, data)
-		if err != nil {
-			t.Errorf("Unexpected decode error \"%s\" for %v", err, tc)
-		}
+		tc := roundTripTestCase{fields, values}
 
-		if len(tc.values) != len(result) {
-			t.Errorf("Value count not equal, expected %d, got %d for %v", len(tc.values), len(result), tc)
-		}
-
-		for i, expected := range tc.values {
-			if expected != result[i] {
-				t.Errorf("Incorrect value, expected 0x%08x, got 0x%08x for %v", expected, result[i], tc)
-			}
-		}
+		executeRoundTrip(t, tc)
 	}
 }
 

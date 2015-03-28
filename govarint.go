@@ -1,3 +1,7 @@
+// TODO Would it make sense to first encode the field widths, ie: the
+// output would be:
+// <field width specifier length>, <field width>, <field>.
+
 package govarint
 
 import (
@@ -194,7 +198,11 @@ func popBitsFromSlice(slice *[]byte, width uint8, curByte *uint8, curIndex *uint
 		curMask := uint8(mask >> (readByteIndex * 8))
 		curValue := uint8((*curByte & curMask) << *curIndex)
 
-		value |= uint32(curValue) << dataBitIndex
+		if dataBitIndex <= 24 {
+			value |= uint32(curValue) << dataBitIndex
+		} else {
+			value |= uint32(curValue) >> (8 - (dataBitIndex % 8))
+		}
 
 		advancedWidth := 8 - *curIndex
 		if remainingWidth < advancedWidth {
@@ -249,7 +257,6 @@ func addBitsToSlice(slice *[]byte, value uint32, width uint8, curByte *uint8, cu
 	var v uint64 = (uint64(value) << uint(64-width-*curIndex))
 
 	remainingBits := width
-
 	start := uint(56)
 
 	// Handle first partial byte
@@ -262,6 +269,7 @@ func addBitsToSlice(slice *[]byte, value uint32, width uint8, curByte *uint8, cu
 			completedWidth = width
 		}
 
+		// TODO Should this be completedWidth?
 		if width+*curIndex >= 8 {
 			*slice = append(*slice, *curByte)
 			*curByte = 0
