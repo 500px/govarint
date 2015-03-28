@@ -2,6 +2,7 @@ package govarint
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"math/rand"
 	"testing"
@@ -245,6 +246,8 @@ func executeRoundTrip(t *testing.T, tc roundTripTestCase) {
 		t.Errorf("Unexpected encode error \"%s\" for %v", err, tc)
 	}
 
+	fmt.Printf("Custom varint uses: %d bytes\n", len(data))
+
 	result, err := Decode(tc.fields, data)
 	if err != nil {
 		t.Errorf("Unexpected decode error \"%s\" for %v", err, tc)
@@ -272,18 +275,45 @@ func TestRandomRoundTrip(t *testing.T) {
 		values := []uint32{}
 		fields := []uint8{}
 		for i := 0; i < valueCount; i++ {
-			curValue := uint32(rand.Int63() & 0xffffffff)
+			curValue := uint32(rand.Int63() & ((1 << uint(rand.Int31n(33))) - 1))
 			values = append(values, curValue)
 
 			valueLength := int32(32 - countLeadingZeros(curValue))
 			fieldWidth := rand.Int31n(int32(32-valueLength+1)) + valueLength
+			fieldWidth = int32(32 - countLeadingZeros(uint32(fieldWidth)))
+			if fieldWidth == 0 {
+				fieldWidth = 1
+			}
 			fields = append(fields, uint8(fieldWidth))
 		}
 
 		tc := roundTripTestCase{fields, values}
 
 		executeRoundTrip(t, tc)
+
+		encodeStandardVarint(tc)
 	}
+}
+
+func encodeStandardVarint(tc roundTripTestCase) {
+	buf := make([]byte, 512)
+
+	i := 0
+	for _, v := range tc.values {
+		written := binary.PutUvarint(buf[i:], uint64(v))
+		i += written
+	}
+
+	i = 0
+	for _, v := range tc.values {
+		actual, read := binary.Uvarint(buf[i:])
+		if uint32(actual) != v {
+			fmt.Printf("Expected 0x%x, got 0x%x\n", v, actual)
+		}
+		i += read
+	}
+
+	fmt.Printf("Standard library varint would use: %d bytes\n", i)
 }
 
 func TestCountLeadingZeros(t *testing.T) {

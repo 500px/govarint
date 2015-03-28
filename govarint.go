@@ -63,6 +63,10 @@ func Encode(fields []uint8, values []uint32) ([]byte, error) {
 	totalValueWidth := 0
 
 	for i, fieldWidth := range fields {
+		if fieldWidth == 0 {
+			return []byte{}, fmt.Errorf("received invalid 0 field width")
+		}
+
 		leadingZeros := countLeadingZeros(values[i])
 		valueWidth := 32 - leadingZeros
 
