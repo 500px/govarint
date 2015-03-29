@@ -269,13 +269,12 @@ func executeRoundTrip(tc roundTripTestCase) (uint, error) {
 	return size, nil
 }
 
-func TestRandomRoundTrip(t *testing.T) {
+func TestRandomRoundTrips(t *testing.T) {
 	seed := time.Now().UnixNano()
 	rand.Seed(seed)
 	fmt.Printf("Random seed: %d\n", seed)
 
-	var totalCustomSize uint
-	var totalStandardSize uint
+	allCases := []roundTripTestCase{}
 
 	for testCount := 0; testCount < 1000000; testCount++ {
 		valueCount := int(rand.Int31n(30)) + 1
@@ -295,14 +294,31 @@ func TestRandomRoundTrip(t *testing.T) {
 			fields = append(fields, uint8(fieldWidth))
 		}
 
-		tc := roundTripTestCase{fields, values}
+		allCases = append(allCases, roundTripTestCase{fields, values})
+	}
 
+	if err := compareRoundTrips(allCases); err != nil {
+		t.Error(err.Error())
+	}
+}
+
+func compareRoundTrips(allCases []roundTripTestCase) error {
+	var totalCustomSize uint
+	var totalStandardSize uint
+	var totalCustomTime int64
+	var totalStandardTime int64
+
+	for _, tc := range allCases {
+		start := time.Now().UnixNano()
 		customSize, err := executeRoundTrip(tc)
+		totalCustomTime += time.Now().UnixNano() - start
 		if err != nil {
-			t.Errorf(err.Error())
+			return err
 		}
 
+		start = time.Now().UnixNano()
 		standardSize := encodeStandardVarint(tc)
+		totalStandardTime += time.Now().UnixNano() - start
 
 		totalCustomSize += customSize
 		totalStandardSize += standardSize
@@ -311,6 +327,43 @@ func TestRandomRoundTrip(t *testing.T) {
 	fmt.Printf("Custom varint would in total have used: %d bytes\n", totalCustomSize)
 	fmt.Printf("Standard library varint would in total have used: %d bytes\n", totalStandardSize)
 	fmt.Printf("Custom varint total was %02f %% of standard library varint.\n", float32(totalCustomSize)/float32(totalStandardSize))
+
+	fmt.Printf("Custom varint took %s, standard library took %s.\n", time.Duration(totalCustomTime), time.Duration(totalStandardTime))
+
+	return nil
+}
+
+func TestFoRealz(t *testing.T) {
+	seed := time.Now().UnixNano()
+	rand.Seed(seed)
+	fmt.Printf("Random seed: %d\n", seed)
+
+	allCases := []roundTripTestCase{}
+
+	for i := 0; i < 1000000; i++ {
+		// Action type: 0-7
+		// Actor type: 0-7
+		// Actor ID: 0-4294967296
+		// Object type: 0-7
+		// Object ID: 0-4294967296
+		tc := roundTripTestCase{fields: []uint8{2, 2, 6, 2, 6}}
+
+		values := []uint32{}
+
+		values = append(values, uint32(rand.Int31n(8)))
+		values = append(values, uint32(rand.Int31n(7)))
+		values = append(values, uint32(rand.Int31n(100000000)))
+		values = append(values, uint32(rand.Int31n(7)))
+		values = append(values, uint32(rand.Int31n(400000000)*10))
+
+		tc.values = values
+
+		allCases = append(allCases, tc)
+	}
+
+	if err := compareRoundTrips(allCases); err != nil {
+		t.Error(err.Error())
+	}
 }
 
 func encodeStandardVarint(tc roundTripTestCase) uint {

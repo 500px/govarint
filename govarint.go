@@ -43,7 +43,9 @@ Encode the given values in the given varint format.
 Args:
   fields: Ordered list of bit widths of fields. e.g.: 2 means two bits
     are allocated to specify the length of the value and so the value
-    may only be in the range of ints expressible in two bits (0..3).
+    may only be in the range of ints expressible in two bits (0..3)
+    even though only at most one bit will be used to store the actual
+    value.
   values: Ordered list of values. If a value exceeds the allocated
     space an error will be returned.
 */
