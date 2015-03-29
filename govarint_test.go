@@ -236,38 +236,46 @@ var (
 
 func TestRoundTrip(t *testing.T) {
 	for _, tc := range roundTripTests {
-		executeRoundTrip(t, tc)
+		_, err := executeRoundTrip(tc)
+		if err != nil {
+			t.Errorf(err.Error())
+		}
 	}
 }
 
-func executeRoundTrip(t *testing.T, tc roundTripTestCase) {
+func executeRoundTrip(tc roundTripTestCase) (uint, error) {
 	data, err := Encode(tc.fields, tc.values)
 	if err != nil {
-		t.Errorf("Unexpected encode error \"%s\" for %v", err, tc)
+		return 0, fmt.Errorf("Unexpected encode error \"%s\" for %v", err, tc)
 	}
 
-	fmt.Printf("Custom varint uses: %d bytes\n", len(data))
+	size := uint(len(data))
 
 	result, err := Decode(tc.fields, data)
 	if err != nil {
-		t.Errorf("Unexpected decode error \"%s\" for %v", err, tc)
+		return 0, fmt.Errorf("Unexpected decode error \"%s\" for %v", err, tc)
 	}
 
 	if len(tc.values) != len(result) {
-		t.Errorf("Value count not equal, expected %d, got %d for %v", len(tc.values), len(result), tc)
+		return 0, fmt.Errorf("Value count not equal, expected %d, got %d for %v", len(tc.values), len(result), tc)
 	}
 
 	for i, expected := range tc.values {
 		if expected != result[i] {
-			t.Errorf("Incorrect value, expected 0x%08x, got 0x%08x for %v", expected, result[i], tc)
+			return 0, fmt.Errorf("Incorrect value, expected 0x%08x, got 0x%08x for %v", expected, result[i], tc)
 		}
 	}
+
+	return size, nil
 }
 
 func TestRandomRoundTrip(t *testing.T) {
 	seed := time.Now().UnixNano()
 	rand.Seed(seed)
 	fmt.Printf("Random seed: %d\n", seed)
+
+	var totalCustomSize uint
+	var totalStandardSize uint
 
 	for testCount := 0; testCount < 1000000; testCount++ {
 		valueCount := int(rand.Int31n(30)) + 1
@@ -289,13 +297,23 @@ func TestRandomRoundTrip(t *testing.T) {
 
 		tc := roundTripTestCase{fields, values}
 
-		executeRoundTrip(t, tc)
+		customSize, err := executeRoundTrip(tc)
+		if err != nil {
+			t.Errorf(err.Error())
+		}
 
-		encodeStandardVarint(tc)
+		standardSize := encodeStandardVarint(tc)
+
+		totalCustomSize += customSize
+		totalStandardSize += standardSize
 	}
+
+	fmt.Printf("Custom varint would in total have used: %d bytes\n", totalCustomSize)
+	fmt.Printf("Standard library varint would in total have used: %d bytes\n", totalStandardSize)
+	fmt.Printf("Custom varint total was %02f %% of standard library varint.\n", float32(totalCustomSize)/float32(totalStandardSize))
 }
 
-func encodeStandardVarint(tc roundTripTestCase) {
+func encodeStandardVarint(tc roundTripTestCase) uint {
 	buf := make([]byte, 512)
 
 	i := 0
@@ -313,7 +331,7 @@ func encodeStandardVarint(tc roundTripTestCase) {
 		i += read
 	}
 
-	fmt.Printf("Standard library varint would use: %d bytes\n", i)
+	return uint(i)
 }
 
 func TestCountLeadingZeros(t *testing.T) {
