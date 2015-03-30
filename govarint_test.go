@@ -7,7 +7,18 @@ import (
 	"math/rand"
 	"testing"
 	"time"
+
+	"github.com/ugorji/go/codec"
 )
+
+type Activity struct {
+	Version    uint8  `codec:version`
+	Action     uint8  `codec:action`
+	ActorType  uint8  `codec:actorType`
+	ActorID    uint32 `codec:actorID`
+	ObjectType uint8  `codec:objectType`
+	ObjectID   uint32 `codec:objectID`
+}
 
 type (
 	leadingZeroTestCase struct {
@@ -341,15 +352,17 @@ func TestFoRealz(t *testing.T) {
 	allCases := []roundTripTestCase{}
 
 	for i := 0; i < 1000000; i++ {
+		// Version: 0-127
 		// Action type: 0-7
 		// Actor type: 0-7
 		// Actor ID: 0-4294967296
 		// Object type: 0-7
 		// Object ID: 0-4294967296
-		tc := roundTripTestCase{fields: []uint8{2, 2, 6, 2, 6}}
+		tc := roundTripTestCase{fields: []uint8{4, 2, 2, 6, 2, 6}}
 
 		values := []uint32{}
 
+		values = append(values, uint32(rand.Int31n(16)))
 		values = append(values, uint32(rand.Int31n(8)))
 		values = append(values, uint32(rand.Int31n(7)))
 		values = append(values, uint32(rand.Int31n(100000000)))
@@ -364,6 +377,64 @@ func TestFoRealz(t *testing.T) {
 	if err := compareRoundTrips(allCases); err != nil {
 		t.Error(err.Error())
 	}
+
+	msgPackTest(t, allCases)
+}
+
+func msgPackTest(t *testing.T, allCases []roundTripTestCase) {
+	var totalSize uint
+	var totalTime int64
+
+	for _, tc := range allCases {
+		a := Activity{
+			Version:    uint8(tc.values[0]),
+			Action:     uint8(tc.values[1]),
+			ActorType:  uint8(tc.values[2]),
+			ActorID:    tc.values[3],
+			ObjectType: uint8(tc.values[4]),
+			ObjectID:   tc.values[5],
+		}
+
+		start := time.Now().UnixNano()
+		mh := &codec.MsgpackHandle{RawToString: true}
+		bytes := []byte{}
+		enc := codec.NewEncoderBytes(&bytes, mh)
+		err := enc.Encode(&a)
+		if err != nil {
+			t.Error(err.Error())
+		}
+		totalSize += uint(len(bytes))
+
+		newA := Activity{}
+		dec := codec.NewDecoderBytes(bytes, mh)
+		err = dec.Decode(&newA)
+		totalTime += time.Now().UnixNano() - start
+		if err != nil {
+			t.Error(err.Error())
+		}
+
+		if a.Version != newA.Version {
+			t.Error("Mismatched version\n")
+		}
+		if a.Action != newA.Action {
+			t.Error("Mismatched version\n")
+		}
+		if a.ActorType != newA.ActorType {
+			t.Error("Mismatched actor type\n")
+		}
+		if a.ActorID != newA.ActorID {
+			t.Error("Mismatched actor ID\n")
+		}
+		if a.ObjectType != newA.ObjectType {
+			t.Error("Mismatched object type\n")
+		}
+		if a.ObjectID != newA.ObjectID {
+			t.Error("Mismatched object ID\n")
+		}
+	}
+
+	fmt.Printf("Msgpack would in total have used: %d bytes\n", totalSize)
+	fmt.Printf("Msgpack took %s.\n", time.Duration(totalTime))
 }
 
 func encodeStandardVarint(tc roundTripTestCase) uint {
