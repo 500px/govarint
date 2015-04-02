@@ -250,55 +250,63 @@ func popBitsFromSlice(slice *[]byte, width uint8, curByte *uint8, curIndex *uint
 }
 
 func addBitsToSlice(slice *[]byte, value uint32, width uint8, curByte *uint8, curIndex *uint8, skipFirstBit bool) {
+	var remainingBits uint8
+	var finalIndex uint8
+	var shiftedValue uint64
+	var shiftedMask uint64
+
 	if skipFirstBit {
-		width--
-	}
-
-	if width == 0 {
-		return
-	}
-
-	// Shift value to high bits, stripping the first bit if skipFirstBit
-	// since we know it must be set (no need to store).
-	var v uint64 = (uint64(value) << uint(64-width-*curIndex))
-
-	remainingBits := width
-	start := uint(56)
-
-	// Handle first partial byte
-	if *curIndex > 0 {
-		*curByte |= uint8((v & ^(0xff << (64 - *curIndex))) >> start)
-		start -= 8
-
-		completedWidth := 8 - *curIndex
-		if width < completedWidth {
-			completedWidth = width
-		}
-
-		// TODO Should this be completedWidth?
-		if width+*curIndex >= 8 {
-			*slice = append(*slice, *curByte)
-			*curByte = 0
-			*curIndex = 0
-		} else {
-			*curIndex += completedWidth
-		}
-
-		if completedWidth == width {
+		if width <= 1 {
 			return
 		}
-
-		remainingBits -= completedWidth
-	}
-
-	for i := start; remainingBits > 0; i -= 8 {
-		*curIndex = remainingBits % 8
-
-		*curByte = uint8(v >> i)
-		if remainingBits < 8 {
-			break
+		remainingBits = width - 1
+		finalIndex = (*curIndex + remainingBits) % 8
+		// Unset leading 1.
+		value &= (1 << remainingBits) - 1
+		if *curIndex == 0 {
+			*curIndex = 8
 		}
-		*slice = append(*slice, *curByte)
-		remainingBits -= 8
+		shiftedValue = uint64(value) << (40 - remainingBits - *curIndex)
+		shiftedMask = ((1 << remainingBits) - 1) << (40 - remainingBits - *curIndex)
+	} else {
+		if width == 0 {
+			return
+		}
+		remainingBits = width
+		if *curIndex == 0 {
+			*curIndex = 8
+		}
+		finalIndex = (*curIndex + remainingBits) % 8
+		shiftedValue = uint64(value) << (40 - width - *curIndex)
+		shiftedMask = ((1 << width) - 1) << (40 - width - *curIndex)
 	}
+
+	maskedValue := shiftedValue & shiftedMask
+
+	// Handle leading partial byte.
+	if *curIndex&0x7 != 0 {
+		*curByte |= uint8(maskedValue >> 32)
+		remainingBits -= 8 - *curIndex
+		if remainingBits&0x80 != 0 {
+			remainingBits = 0
+			*curIndex = finalIndex
+			return
+		} else {
+			*slice = append(*slice, *curByte)
+		}
+	}
+
+	// Handle complete bytes.
+	shiftAmount := uint8(24)
+	for ; remainingBits >= 8; remainingBits -= 8 {
+		*slice = append(*slice, uint8(maskedValue>>shiftAmount))
+		shiftAmount -= 8
+	}
+
+	// Handle trailing partial byte.
+	if remainingBits > 0 {
+		*curByte = uint8(maskedValue >> shiftAmount)
+	}
+
+	*curIndex = finalIndex
 }
