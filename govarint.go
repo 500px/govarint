@@ -96,15 +96,11 @@ func Encode(fields []uint8, values []uint32) ([]byte, error) {
 	}
 
 	for _, b := range valueResult {
-		curValueWidth := 8
 		if totalValueWidth < 8 {
-			curValueWidth = totalValueWidth
-		}
-		if curValueWidth == 8 {
-			addBitsToSlice(&formatResult, uint32(b), uint8(curValueWidth), &formatCurByte, &formatCurIndex, false)
-			totalValueWidth -= 8
+			addBitsToSlice(&formatResult, uint32(b>>uint(8-totalValueWidth)), uint8(totalValueWidth), &formatCurByte, &formatCurIndex, false)
 		} else {
-			addBitsToSlice(&formatResult, uint32(b>>uint(8-curValueWidth)), uint8(curValueWidth), &formatCurByte, &formatCurIndex, false)
+			addBitsToSlice(&formatResult, uint32(b), uint8(8), &formatCurByte, &formatCurIndex, false)
+			totalValueWidth -= 8
 		}
 	}
 
