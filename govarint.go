@@ -59,8 +59,8 @@ func Encode(fields []uint8, values []uint32) ([]byte, error) {
 	var valueCurByte uint8
 	var valueCurIndex uint8
 
-	formatResult := []byte{}
-	valueResult := []byte{}
+	formatResult := make([]byte, 0, len(fields)*5)
+	valueResult := make([]byte, 0, len(fields)*4)
 
 	totalValueWidth := 0
 
@@ -121,7 +121,8 @@ func Decode(fields []uint8, data []byte) ([]uint32, error) {
 	curByte := data[0]
 	data = data[1:len(data)]
 
-	fieldWidths := []uint8{}
+	fieldWidths := make([]uint8, 0, len(fields))
+	values := make([]uint32, 0, len(fields))
 
 	for _, formatWidth := range fields {
 		curFieldWidth, err := popBitsFromSlice(&data, formatWidth, &curByte, &curIndex, false)
@@ -130,8 +131,6 @@ func Decode(fields []uint8, data []byte) ([]uint32, error) {
 		}
 		fieldWidths = append(fieldWidths, uint8(curFieldWidth))
 	}
-
-	values := []uint32{}
 
 	for _, width := range fieldWidths {
 		curValue, err := popBitsFromSlice(&data, width, &curByte, &curIndex, true)
