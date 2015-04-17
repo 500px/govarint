@@ -79,7 +79,7 @@ func Encode(fields []uint8, values []uint32) ([]byte, error) {
 			continue
 		}
 
-		if uint64(values[i]) > uint64((1<<(1<<fieldWidth))-1) {
+		if valueWidth > (1<<fieldWidth)-1 {
 			return []byte{}, fmt.Errorf("value %d too large for field width %d", values[i], fieldWidth)
 		}
 

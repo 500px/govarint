@@ -87,6 +87,12 @@ var (
 		{[]uint8{3, 3, 6, 3, 6}, []uint32{1, 5, 1128411, 2, 123456789}},
 
 		{[]uint8{3, 3}, []uint32{0, 5}},
+
+		{[]uint8{3}, []uint32{8}},
+
+		{[]uint8{3, 3, 6, 3, 6, 3, 6, 6}, []uint32{0, 4, 628043, 1, 105373071, 8, 235836567, 1429277704}},
+
+		{[]uint8{5}, []uint32{272272746}},
 	}
 
 	leadingZeroTests = []leadingZeroTestCase{
@@ -352,21 +358,27 @@ func TestFoRealz(t *testing.T) {
 	allCases := []roundTripTestCase{}
 
 	for i := 0; i < 1000000; i++ {
-		// Version: 0-127
-		// Action type: 0-7
-		// Actor type: 0-7
-		// Actor ID: 0-4294967296
-		// Object type: 0-7
-		// Object ID: 0-4294967296
-		tc := roundTripTestCase{fields: []uint8{4, 2, 2, 6, 2, 6}}
+		// Based on go-utils/activity/activity.go.
+		fieldWidths := []uint8{
+			3, // Version: 0-127
+			3, // Action type: 0-127
+			6, // User ID: 0-4294967296
+			3, // Target type: 0-15
+			6, // Target ID: 0-4294967296
+			3, // Object type: 0-15
+			6, // Object ID: 0-4294967296
+			6} // Published: 0-4294967296
+		tc := roundTripTestCase{fields: fieldWidths}
 
 		values := []uint32{}
 
 		values = append(values, uint32(rand.Int31n(16)))
-		values = append(values, uint32(rand.Int31n(8)))
-		values = append(values, uint32(rand.Int31n(7)))
+		values = append(values, uint32(rand.Int31n(16)))
 		values = append(values, uint32(rand.Int31n(100000000)))
-		values = append(values, uint32(rand.Int31n(7)))
+		values = append(values, uint32(rand.Int31n(16)))
+		values = append(values, uint32(rand.Int31n(100000000)))
+		values = append(values, uint32(rand.Int31n(16)))
+		values = append(values, uint32(rand.Int31n(100000000)))
 		values = append(values, uint32(rand.Int31n(400000000)*10))
 
 		tc.values = values
@@ -507,14 +519,14 @@ func TestEncode(t *testing.T) {
 }
 
 func TestInvalidEncode(t *testing.T) {
-	_, err := Encode([]uint8{1}, []uint32{4})
+	_, err := Encode([]uint8{2}, []uint32{8})
 
 	if err == nil {
 		t.Errorf("Did not receive expected error")
 		return
 	}
 
-	expected := "value 4 too large for field width 1"
+	expected := "value 8 too large for field width 2"
 	if err.Error() != expected {
 		t.Errorf("Expected error \"%s\", got: %s", expected, err)
 		return
